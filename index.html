@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Scan Sender (CE friendly)</title>
+<title>Scan Sender</title>
 <style>
   html,body{height:100%;margin:0;font-family:Tahoma,Arial;background:#f6f8fb;}
   .wrap{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px;}
@@ -43,7 +43,6 @@
 
 <script>
 (function(){
-  // عناصر DOM
   var hostInput = document.getElementById('host');
   var portInput = document.getElementById('port');
   var input = document.getElementById('scan');
@@ -53,40 +52,24 @@
   var testBtn = document.getElementById('testBtn');
   var forceBtn = document.getElementById('forceSend');
 
-  // إعدادات التصفية والـ debounce
-  var POLL_INTERVAL = 100;   // ms
-  var DEBOUNCE_MS = 150;     // ms after last change send
-  var lastValue = "";
-  var lastSent = "";
+  var POLL_INTERVAL = 100;   
+  var DEBOUNCE_MS = 150;     
   var lastObserved = "";
   var debounceTimer = null;
   var pollTimer = null;
 
-  // helpers
   function getHost(){ return (hostInput && hostInput.value) ? hostInput.value : "192.168.1.103"; }
   function getPort(){ return (portInput && portInput.value) ? portInput.value : "9999"; }
 
   function logStatus(txt){
-    try{
-      status.textContent = txt;
-    }catch(e){
-      // older browsers
-      status.innerText = txt;
-    }
+    try{ status.textContent = txt; }catch(e){ status.innerText = txt; }
   }
 
   function sendScan(value){
     if(!value) return;
-    // trim and remove line endings
     value = String(value).replace(/[\r\n]+/g, "").trim();
     if(!value) return;
-    if(value === lastSent){
-      logStatus("مكرر — لم يُرسل: " + value);
-      input.value = "";
-      return;
-    }
-    lastSent = value;
-    // image trick
+
     try{
       var img = new Image();
       var url = "http://" + getHost() + ":" + getPort() + "/?scan=" + encodeURIComponent(value);
@@ -95,11 +78,10 @@
     }catch(e){
       logStatus("خطأ أثناء الإرسال: " + e);
     }
-    // clear and refocus
+
     try{ input.value = ""; input.focus(); }catch(e){}
   }
 
-  // debounce sender
   function scheduleSend(v){
     if(debounceTimer) try{ clearTimeout(debounceTimer); }catch(e){}
     debounceTimer = setTimeout(function(){
@@ -110,18 +92,14 @@
     }, DEBOUNCE_MS);
   }
 
-  // robust change handler for very old browsers
   function onInputDetected(v){
     if(!v) return;
-    // if ends with newline or contains newline -> immediate send for parts
     if(/[\r\n]/.test(v)){
       var parts = v.split(/[\r\n]+/);
       for(var i=0;i<parts.length;i++){
         var p = (parts[i] || "").trim();
         if(!p) continue;
-        // if last part and maybe incomplete, use schedule
         if(i === parts.length-1){
-          // schedule send for last part (in case next chars follow)
           scheduleSend(p);
         } else {
           sendScan(p);
@@ -129,11 +107,9 @@
       }
       return;
     }
-    // otherwise schedule send (debounce)
     scheduleSend(v);
   }
 
-  // polling fallback (for very old browsers that don't fire events reliably)
   function startPolling(){
     lastObserved = (input && input.value) ? input.value : "";
     pollTimer = setInterval(function(){
@@ -145,25 +121,19 @@
     }, POLL_INTERVAL);
   }
 
-  // try to attach various events (supports old IE)
   function attachEvents(){
     if(!input) return;
-    // modern
     if(input.addEventListener){
       try{ input.addEventListener('input', function(e){ onInputDetected(input.value); }, false); }catch(e){}
       try{ input.addEventListener('keyup', function(e){ onInputDetected(input.value); }, false); }catch(e){}
       try{ input.addEventListener('change', function(e){ onInputDetected(input.value); }, false); }catch(e){}
-    } else if(input.attachEvent){ // old IE
+    } else if(input.attachEvent){
       try{ input.attachEvent('onpropertychange', function(e){ onInputDetected(input.value); }); }catch(e){}
       try{ input.attachEvent('onkeyup', function(e){ onInputDetected(input.value); }); }catch(e){}
-    } else {
-      // no events; rely on polling
     }
-    // also keep polling as robust fallback
     startPolling();
   }
 
-  // Save/load settings to localStorage if available
   function saveSettings(){
     try{
       if(window.localStorage){
@@ -174,10 +144,10 @@
         logStatus("الإعدادات: لا يوجد تخزين محلي؛ تم تطبيق القيم بدون حفظ.");
       }
     }catch(e){
-      // ignore
       logStatus("حفظ فشل: " + e);
     }
   }
+
   function loadSettings(){
     try{
       if(window.localStorage){
@@ -189,7 +159,6 @@
     }catch(e){}
   }
 
-  // Test connection by loading an image to server root (simple)
   function testConnection(){
     var url = "http://" + getHost() + ":" + getPort() + "/?scan=__TEST__&_=" + (new Date()).getTime();
     try{
@@ -203,15 +172,13 @@
     }
   }
 
-  // attach buttons
   try{
     saveBtn.onclick = saveSettings;
     testBtn.onclick = testConnection;
-    clearBtn.onclick = function(){ input.value = ""; input.focus(); lastSent=""; logStatus("حُذف الحقل. جاهز."); };
+    clearBtn.onclick = function(){ input.value = ""; input.focus(); logStatus("حُذف الحقل. جاهز."); };
     forceBtn.onclick = function(){ var v = input.value.trim(); if(v) sendScan(v); else logStatus("الحقل فارغ."); };
   }catch(e){}
 
-  // init
   loadSettings();
   attachEvents();
   try{ input.focus(); }catch(e){}
