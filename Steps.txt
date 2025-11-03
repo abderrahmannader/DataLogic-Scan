@@ -8,3 +8,4 @@ python -m pip install pynput
 
 
 
+New-NetFirewallRule -DisplayName "DXU Listener 9999" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9999 -Profile Private,Domain,Public
