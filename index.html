@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Scan Sender</title>
+<style>
+  html,body{height:100%;margin:0;font-family:Tahoma,Arial;}
+  .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;}
+  input#scan{font-size:24px;padding:12px;width:360px;}
+  .status{margin-top:12px;font-size:14px;color:#006;white-space:pre-wrap;}
+  button{margin-top:8px;padding:8px 12px;font-size:16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <input id="scan" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ضع المؤشر هنا ثم اسكان الـ barcode" />
+  </div>
+  <div>
+    <button id="clearBtn">مسح</button>
+  </div>
+  <div class="status" id="status">جاههز — السيرفر: http://192.168.1.70:9999/?scan=VALUE</div>
+</div>
+
+<script>
+(function(){
+  // عدّل الـ host و port لو احتجت
+  var host = "192.168.1.70";
+  var port = 9999;
+  var input = document.getElementById('scan');
+  var status = document.getElementById('status');
+  var clearBtn = document.getElementById('clearBtn');
+
+  function sendScan(value){
+    if(!value) return;
+    // استخدم image trick عشان نتجنب مشاكل CORS / AJAX في متصفحات CE القديمة
+    var img = new Image();
+    var url = "http://"+host+":" + port + "/?scan=" + encodeURIComponent(value);
+    img.src = url + "&_=" + Date.now();
+    // تحديث الحالة للمستخدم
+    status.textContent = "أُرسلت: " + value + "  (إلى " + host + ":" + port + ")";
+    // افرغ الحقل وأعد التركيز بعد قليل
+    input.value = "";
+    setTimeout(function(){ try{ input.focus(); }catch(e){} }, 200);
+  }
+
+  // عند الضغط Enter
+  input.addEventListener('keydown', function(e){
+    var code = e.which || e.keyCode;
+    if(code === 13){ // Enter
+      var v = input.value.trim();
+      if(v.length){
+        sendScan(v);
+      }
+      e.preventDefault();
+    }
+  }, false);
+
+  // لو الـ scanner يرسل terminator غير Enter (CR/LF) قد يظهر السلوك نفسه لأن معظم الأجهزة ترسل Enter.
+  // زر المسح
+  clearBtn.addEventListener('click', function(){ input.value=""; input.focus(); });
+
+  // ركّز الحقل وابقاه مركز
+  function keepFocus(){
+    try{ input.focus(); }catch(e){}
+    setTimeout(keepFocus, 1000);
+  }
+  setTimeout(keepFocus, 300);
+  // رسالة المبدئية
+  status.textContent = "جاهز — السيرفر: http://"+host+":"+port+"/?scan=VALUE";
+})();
+</script>
+</body>
+</html>
