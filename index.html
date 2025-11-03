@@ -2,12 +2,12 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Scan Sender</title>
+<title>Scan Sender (Auto)</title>
 <style>
   html,body{height:100%;margin:0;font-family:Tahoma,Arial;}
   .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;}
   input#scan{font-size:24px;padding:12px;width:360px;}
-  .status{margin-top:12px;font-size:14px;color:#006;white-space:pre-wrap;}
+  .status{margin-top:12px;font-size:14px;color:#006;white-space:pre-wrap;text-align:center;}
   button{margin-top:8px;padding:8px 12px;font-size:16px;}
 </style>
 </head>
@@ -19,7 +19,7 @@
   <div>
     <button id="clearBtn">مسح</button>
   </div>
-  <div class="status" id="status">جاههز — السيرفر: http://192.168.1.103:9999/?scan=VALUE</div>
+  <div class="status" id="status">جاهز — السيرفر: http://192.168.1.103:9999/?scan=VALUE</div>
 </div>
 
 <script>
@@ -31,9 +31,26 @@
   var status = document.getElementById('status');
   var clearBtn = document.getElementById('clearBtn');
 
+  // زمن الانتظار بعد اخر تغيير قبل الارسال (ms)
+  var DEBOUNCE_MS = 150;
+
+  var debounceTimer = null;
+  var lastSent = ""; // لمنع الارسال المكرر
+
   function sendScan(value){
     if(!value) return;
-    // استخدم image trick عشان نتجنب مشاكل CORS / AJAX في متصفحات CE القديمة
+    // قص محارف نهاية السطر لو موجودة
+    value = value.replace(/[\r\n]+/g, "");
+    if(!value) return;
+    if(value === lastSent){
+      // لو ده نفس اللي اتبعت اخر مرة، نتجاهل لتقليل الزحمة
+      status.textContent = "مكرر — لم يُرسل: " + value;
+      input.value = "";
+      setTimeout(function(){ try{ input.focus(); }catch(e){} }, 200);
+      return;
+    }
+    lastSent = value;
+    // استخدم image trick لتجنب مشاكل CORS / AJAX في متصفحات CE القديمة
     var img = new Image();
     var url = "http://"+host+":" + port + "/?scan=" + encodeURIComponent(value);
     img.src = url + "&_=" + Date.now();
@@ -44,7 +61,50 @@
     setTimeout(function(){ try{ input.focus(); }catch(e){} }, 200);
   }
 
-  // عند الضغط Enter
+  // دالة تعالج النص المستلم وتقرر متى نرسل
+  function handleNewValue(v){
+    if(!v) return;
+    // لو فيه newline (CR/LF) في النهاية فابعت فورًا
+    if(/[\r\n]$/.test(v)){
+      v = v.replace(/[\r\n]+$/g, "");
+      sendScan(v.trim());
+      return;
+    }
+    // خلاف ذلك نعمل debounce: ننتظر هل هيجي باقي الحروف؟
+    if(debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function(){
+      var cur = input.value.trim();
+      if(cur.length){
+        sendScan(cur);
+      }
+    }, DEBOUNCE_MS);
+  }
+
+  // استماع لتغير القيمة (تعمل مع لصق او كتابة او ارسال من scanner)
+  input.addEventListener('input', function(e){
+    var v = input.value;
+    // احيانا جهاز الكود يضيف محارف غير مرئية؛ نعالجها
+    if(v && /[\r\n]/.test(v)){
+      // لو فيه newline في النص، نفصل ونرسل كل جزء (لو الجهاز بعث اكثر من مسح مرة وحدة)
+      var parts = v.split(/[\r\n]+/);
+      for(var i=0;i<parts.length;i++){
+        var part = parts[i].trim();
+        if(part){
+          // لو ده مش اخر جزء نرسله فورًا
+          if(i < parts.length - 1){
+            sendScan(part);
+          } else {
+            // للجزء الاخير: ممكن يكون الحقل انتهى او سيكمل — نفكّر بالـ debounce
+            handleNewValue(part);
+          }
+        }
+      }
+    } else {
+      handleNewValue(v);
+    }
+  }, false);
+
+  // شكّل حالة الضغط Enter (للبعض من المسجلات اللي تبعث Enter بدل CR/LF)
   input.addEventListener('keydown', function(e){
     var code = e.which || e.keyCode;
     if(code === 13){ // Enter
@@ -56,14 +116,13 @@
     }
   }, false);
 
-  // لو الـ scanner يرسل terminator غير Enter (CR/LF) قد يظهر السلوك نفسه لأن معظم الأجهزة ترسل Enter.
   // زر المسح
-  clearBtn.addEventListener('click', function(){ input.value=""; input.focus(); });
+  clearBtn.addEventListener('click', function(){ input.value=""; input.focus(); lastSent=""; status.textContent = "حُذف. جاهز."; });
 
   // ركّز الحقل وابقاه مركز
   function keepFocus(){
     try{ input.focus(); }catch(e){}
-    setTimeout(keepFocus, 1000);
+    setTimeout(keepFocus, 800);
   }
   setTimeout(keepFocus, 300);
   // رسالة المبدئية
