@@ -1,222 +1,51 @@
-<!doctype html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>Scan Sender (CE friendly)</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Scan Sender CE - VBScript</title>
 <style>
-  html,body{height:100%;margin:0;font-family:Tahoma,Arial;background:#f6f8fb;}
-  .wrap{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px;}
-  .top{width:100%;max-width:420px;margin-bottom:12px;}
-  label{display:block;font-size:12px;margin:6px 0 2px;color:#333;}
-  input[type=text],input[type=number]{font-size:16px;padding:8px;width:100%;box-sizing:border-box;}
-  input#scan{font-size:24px;padding:12px;width:100%;margin-top:10px;}
-  .status{margin-top:10px;font-size:13px;color:#006;white-space:pre-wrap;text-align:center;}
-  button{margin-top:8px;padding:8px 12px;font-size:16px;}
-  .row{display:flex;gap:8px;}
-  .row>input{flex:1;}
-  .small{font-size:12px;color:#666;margin-top:6px;}
+body { font-family:Tahoma; font-size:14px; text-align:center; background-color:#eef; }
+input { font-size:20px; width:300px; margin:10px; }
+button { font-size:16px; padding:6px 12px; }
+#status { margin-top:10px; color:#003366; font-size:12px; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <label for="host">Server IP</label>
-    <input id="host" type="text" value="192.168.1.103" />
-    <label for="port">Port</label>
-    <input id="port" type="number" value="9999" />
-    <div class="row">
-      <button id="saveBtn">حفظ الإعدادات</button>
-      <button id="testBtn">اختبر اتصال</button>
-    </div>
-    <div class="small">إذا المتصفح قديم، احفظ الإعدادات ثم افتح الحقل واضغط المسح.</div>
-  </div>
 
-  <div style="width:100%;max-width:420px;">
-    <input id="scan" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="ضع المؤشر هنا ثم اسكان الـ barcode" />
-    <div style="display:flex;gap:8px;margin-top:6px;">
-      <button id="clearBtn">مسح الحقل</button>
-      <button id="forceSend">أرسل يدوياً</button>
-    </div>
-    <div class="status" id="status">جاهز — لم يتم الإرسال بعد.</div>
-  </div>
-</div>
+<h3>Scan Sender CE (VBScript)</h3>
+<p>ضع المؤشر في المربع ثم اعمل Scan</p>
+<input type="text" id="scan" />
+<br>
+<button onclick="SendNow">إرسال يدوي</button>
+<div id="status">جاهز</div>
 
-<script>
-(function(){
-  // عناصر DOM
-  var hostInput = document.getElementById('host');
-  var portInput = document.getElementById('port');
-  var input = document.getElementById('scan');
-  var status = document.getElementById('status');
-  var clearBtn = document.getElementById('clearBtn');
-  var saveBtn = document.getElementById('saveBtn');
-  var testBtn = document.getElementById('testBtn');
-  var forceBtn = document.getElementById('forceSend');
+<script language="VBScript">
+Dim ws, lastValue
+Set ws = CreateObject("MSWinsock.Winsock")
 
-  // إعدادات التصفية والـ debounce
-  var POLL_INTERVAL = 100;   // ms
-  var DEBOUNCE_MS = 150;     // ms after last change send
-  var lastValue = "";
-  var lastSent = "";
-  var lastObserved = "";
-  var debounceTimer = null;
-  var pollTimer = null;
+Sub SendNow()
+    Dim txt, host, port
+    host = "192.168.1.103"   ' <-- عدّل هنا IP الكمبيوتر
+    port = 9999             ' <-- وعدّل البورت حسب الـ listener
+    txt = Document.All("scan").Value
+    If txt = "" Then
+        Document.All("status").innerText = "لا يوجد شيء للإرسال."
+        Exit Sub
+    End If
+    On Error Resume Next
+    ws.RemoteHost = host
+    ws.RemotePort = port
+    ws.Connect
+    WScript.Sleep 500
+    ws.SendData txt
+    ws.Close
+    Document.All("status").innerText = "تم إرسال: " & txt & " إلى " & host & ":" & port
+    Document.All("scan").Value = ""
+End Sub
 
-  // helpers
-  function getHost(){ return (hostInput && hostInput.value) ? hostInput.value : "192.168.1.103"; }
-  function getPort(){ return (portInput && portInput.value) ? portInput.value : "9999"; }
-
-  function logStatus(txt){
-    try{
-      status.textContent = txt;
-    }catch(e){
-      // older browsers
-      status.innerText = txt;
-    }
-  }
-
-  function sendScan(value){
-    if(!value) return;
-    // trim and remove line endings
-    value = String(value).replace(/[\r\n]+/g, "").trim();
-    if(!value) return;
-    if(value === lastSent){
-      logStatus("مكرر — لم يُرسل: " + value);
-      input.value = "";
-      return;
-    }
-    lastSent = value;
-    // image trick
-    try{
-      var img = new Image();
-      var url = "http://" + getHost() + ":" + getPort() + "/?scan=" + encodeURIComponent(value);
-      img.src = url + "&_=" + (new Date()).getTime();
-      logStatus("أُرسلت: " + value + "  (إلى " + getHost() + ":" + getPort() + ")");
-    }catch(e){
-      logStatus("خطأ أثناء الإرسال: " + e);
-    }
-    // clear and refocus
-    try{ input.value = ""; input.focus(); }catch(e){}
-  }
-
-  // debounce sender
-  function scheduleSend(v){
-    if(debounceTimer) try{ clearTimeout(debounceTimer); }catch(e){}
-    debounceTimer = setTimeout(function(){
-      var cur = (input && input.value) ? input.value.trim() : "";
-      if(cur.length){
-        sendScan(cur);
-      }
-    }, DEBOUNCE_MS);
-  }
-
-  // robust change handler for very old browsers
-  function onInputDetected(v){
-    if(!v) return;
-    // if ends with newline or contains newline -> immediate send for parts
-    if(/[\r\n]/.test(v)){
-      var parts = v.split(/[\r\n]+/);
-      for(var i=0;i<parts.length;i++){
-        var p = (parts[i] || "").trim();
-        if(!p) continue;
-        // if last part and maybe incomplete, use schedule
-        if(i === parts.length-1){
-          // schedule send for last part (in case next chars follow)
-          scheduleSend(p);
-        } else {
-          sendScan(p);
-        }
-      }
-      return;
-    }
-    // otherwise schedule send (debounce)
-    scheduleSend(v);
-  }
-
-  // polling fallback (for very old browsers that don't fire events reliably)
-  function startPolling(){
-    lastObserved = (input && input.value) ? input.value : "";
-    pollTimer = setInterval(function(){
-      var cur = (input && input.value) ? input.value : "";
-      if(cur !== lastObserved){
-        lastObserved = cur;
-        onInputDetected(cur);
-      }
-    }, POLL_INTERVAL);
-  }
-
-  // try to attach various events (supports old IE)
-  function attachEvents(){
-    if(!input) return;
-    // modern
-    if(input.addEventListener){
-      try{ input.addEventListener('input', function(e){ onInputDetected(input.value); }, false); }catch(e){}
-      try{ input.addEventListener('keyup', function(e){ onInputDetected(input.value); }, false); }catch(e){}
-      try{ input.addEventListener('change', function(e){ onInputDetected(input.value); }, false); }catch(e){}
-    } else if(input.attachEvent){ // old IE
-      try{ input.attachEvent('onpropertychange', function(e){ onInputDetected(input.value); }); }catch(e){}
-      try{ input.attachEvent('onkeyup', function(e){ onInputDetected(input.value); }); }catch(e){}
-    } else {
-      // no events; rely on polling
-    }
-    // also keep polling as robust fallback
-    startPolling();
-  }
-
-  // Save/load settings to localStorage if available
-  function saveSettings(){
-    try{
-      if(window.localStorage){
-        window.localStorage.setItem("scan_sender_host", getHost());
-        window.localStorage.setItem("scan_sender_port", getPort());
-        logStatus("الإعدادات محفوظة.");
-      } else {
-        logStatus("الإعدادات: لا يوجد تخزين محلي؛ تم تطبيق القيم بدون حفظ.");
-      }
-    }catch(e){
-      // ignore
-      logStatus("حفظ فشل: " + e);
-    }
-  }
-  function loadSettings(){
-    try{
-      if(window.localStorage){
-        var h = window.localStorage.getItem("scan_sender_host");
-        var p = window.localStorage.getItem("scan_sender_port");
-        if(h) hostInput.value = h;
-        if(p) portInput.value = p;
-      }
-    }catch(e){}
-  }
-
-  // Test connection by loading an image to server root (simple)
-  function testConnection(){
-    var url = "http://" + getHost() + ":" + getPort() + "/?scan=__TEST__&_=" + (new Date()).getTime();
-    try{
-      var img = new Image();
-      img.onload = function(){ logStatus("نجح اختبار الاتصال — تم إرسال"); };
-      img.onerror = function(){ logStatus("اختبار الاتصال فشل — تأكد من الخادم/Firewall"); };
-      img.src = url;
-      logStatus("جارٍ اختبار الاتصال...");
-    }catch(e){
-      logStatus("اختبار فشل: " + e);
-    }
-  }
-
-  // attach buttons
-  try{
-    saveBtn.onclick = saveSettings;
-    testBtn.onclick = testConnection;
-    clearBtn.onclick = function(){ input.value = ""; input.focus(); lastSent=""; logStatus("حُذف الحقل. جاهز."); };
-    forceBtn.onclick = function(){ var v = input.value.trim(); if(v) sendScan(v); else logStatus("الحقل فارغ."); };
-  }catch(e){}
-
-  // init
-  loadSettings();
-  attachEvents();
-  try{ input.focus(); }catch(e){}
-  logStatus("جاهز — السيرفر: http://" + getHost() + ":" + getPort() + "  (التقنية: polling + events)");
-})();
+Sub Window_OnLoad()
+    Document.All("scan").Focus
+End Sub
 </script>
+
 </body>
 </html>
